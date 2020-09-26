@@ -1,0 +1,21 @@
+#!/bin/bash
+
+info="info"
+pos_dir="pos"
+
+if [ ! -d $info ]
+then
+	 mkdir $info
+fi
+
+if [ ! -d $pos_dir ]
+then
+	mkdir $pos_dir
+fi
+
+for f in "${pos_dir}/*"
+do
+	opencv_createsamples -img $f -bg bg.txt -info info/info.lst -pngoutput info -maxxangle 0.5 -maxyangle 0.5 -maxzangle 0.5 -num 250
+done
+
+opencv_createsamples -info info/info.lst -num 1950 -w 20 -h 20 -vec positives.vec

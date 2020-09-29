@@ -1,21 +1,74 @@
 #!/bin/bash
 
+# script configurations
 info="info"
 pos_dir="pos"
+# number of positive samples for creating positive samples for bg file
+# reduce number according for the number of images in the pos directory
+NUM_POS_SAMPLES=2000
 
-if [ ! -d $info ]
-then
-	 mkdir $info
-fi
+# Shared configuration constants
+POS_SAMPLE = '<path_to_positive_sample_img>'   # path to the positive image sample
 
-if [ ! -d $pos_dir ]
-then
-	mkdir $pos_dir
-fi
+# Configuration constants for video_frame_reader.py
+FRAME_SKIP=10     # Number of frames to skip in-between each saved frame
+MAX_FRAMES=2000   # maximum number of frames to save
+SAVE_DIR=''       # name of directory to save video frames
+VIDEO_PATH='<path_to_video_src>'     # Path to video file
 
-for f in "${pos_dir}/*"
-do
-	opencv_createsamples -img $f -bg bg.txt -info info/info.lst -pngoutput info -maxxangle 0.5 -maxyangle 0.5 -maxzangle 0.5 -num 250
-done
+# Configuration constants for training_data_creator.py
+NEG_IMG_DIR_PATH='seg_train'   # Path to negative image samples
+NEG_OUT_DIR='neg_cascade_training_imgs'  # Path to negative image output directory
+POSITIVE_IMG_SIZE=25 # size of resulting positive sample image: number should not be over 50 for the sake of training time
 
-opencv_createsamples -info info/info.lst -num 1950 -w 20 -h 20 -vec positives.vec
+# Configuration constants for cascades.py
+TEST_VIDEO=''  # path to video file to test cascade training results
+TRAINING_DATA='data/cascade.xml'  # path to created cascade training data
+USING_VIDEO=0  # set to true if a video source is being used to visualize cascade results
+
+gen_negative_samples() {
+	if [ ! -d $NEG_IMG_DIR_PATH ] || [ ! -e $POS_SAMPLE ]
+	then
+		echo "invalid negative images directory or positive sample"
+		exit 1
+	fi
+
+	if [ ! -d $NEG_OUT_DIR ]
+	then
+		mkdir $NEG_OUT_DIR
+	fi
+
+	if [ $POSITIVE_IMG_SIZE -ls 1 ] || [ $POSITIVE_IMG_SIZE -gt 50 ]
+	then 
+		echo "invalid image range: valid range [1 - 50]"
+		exit 1
+
+	python training_data_creator $NEG_IMG_DIR_PATH $NEG_OUT_DIR $POS_SAMPLE $POSITIVE_IMG_SIZE
+}
+
+main () {
+	# making all necessary directories if they don't exist
+	if [ ! -d $info ]
+	then
+		mkdir $info
+	fi
+
+	if [ ! -d $pos_dir ]
+	then
+		mkdir $pos_dir
+	fi
+
+	gen_negative_samples
+
+	# go through each positive sample in the positives directory and create the bg file
+	for f in "${pos_dir}/*"
+	do
+		opencv_createsamples -img $f -bg bg.txt -info info/info.lst -pngoutput info -maxxangle 0.5 -maxyangle 0.5 -maxzangle 0.5 -num $NUM_POS_SAMPLES
+	done
+
+	opencv_createsamples -info info/info.lst -num 1950 -w 20 -h 20 -vec positives.vec
+	nohup opencv_traincascade -data data -vec positives.vec -bg bg.txt -numPos 1800 -numNeg 900 -numStages 10 -w 20 -h 20 &
+	
+}
+
+main
